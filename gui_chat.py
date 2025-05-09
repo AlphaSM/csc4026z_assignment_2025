@@ -4,10 +4,11 @@ import sys
 import msgpack # Need this for DISCONNECT cleanup
 import re
 from html import escape
-from PyQt5.QtWidgets import QCheckBox
+from PyQt5.QtWidgets import QCheckBox, QTextBrowser
 from datetime import datetime
 from PyQt5.QtGui import QMovie
-from PyQt5.QtWidgets import QLabel
+from PyQt5.QtWidgets import QLabel, QSplitter, QListWidget, QListWidgetItem
+# from PyQt5.QtWidgets import QSplitter, QListWidget
 
 
 
@@ -51,6 +52,8 @@ class WindowSignals(QObject):
     status_updated = pyqtSignal(str)        # status_text
     connection_state_changed = pyqtSignal(str, dict) # state ("connected", etc.), data
     title_updated = pyqtSignal(str)         # title_text
+    user_list_updated = pyqtSignal(list)  # NEW signal to handle /users list update
+
 
 
 class ChatWindow(QMainWindow):
@@ -72,17 +75,22 @@ class ChatWindow(QMainWindow):
 
     def init_ui(self):
         self.setWindowTitle(f"PyQt5 Async Chat - Connecting...")
-        self.setGeometry(100, 100, 700, 500) # x, y, width, height
+        self.setGeometry(100, 100, 700, 500)
 
         central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
-        main_layout = QVBoxLayout(central_widget)
 
-        self.text_area = QTextEdit(self)
+        splitter = QSplitter(self)
+        splitter.setOrientation(Qt.Horizontal)
+
+        # === Left Panel (Chat) ===
+        chat_widget = QWidget()
+        chat_layout = QVBoxLayout(chat_widget)
+
+        self.text_area = QTextBrowser(self)
         self.text_area.setReadOnly(True)
-        # Use HTML for basic formatting
+        self.text_area.setOpenExternalLinks(True)
         self.text_area.setHtml("<p><i>Welcome! Please wait...</i></p>")
-
         self.text_area.document().setDefaultStyleSheet("""
             .error { color: red; font-weight: bold; }
             .info { color: blue; }
@@ -93,7 +101,7 @@ class ChatWindow(QMainWindow):
             .timestamp { color: #555; font-size: smaller; }
         """)
 
-        main_layout.addWidget(self.text_area)
+        chat_layout.addWidget(self.text_area)
 
         input_layout = QHBoxLayout()
         self.input_entry = QLineEdit(self)
@@ -101,20 +109,31 @@ class ChatWindow(QMainWindow):
         self.send_button = QPushButton("Send", self)
         input_layout.addWidget(self.input_entry)
         input_layout.addWidget(self.send_button)
-        main_layout.addLayout(input_layout)
+        chat_layout.addLayout(input_layout)
+
+        self.auto_scroll_checkbox = QCheckBox("Auto-scroll", self)
+        self.auto_scroll_checkbox.setChecked(True)
+        chat_layout.addWidget(self.auto_scroll_checkbox)
+
+        chat_widget.setLayout(chat_layout)
+        splitter.addWidget(chat_widget)
+
+        # === Right Panel (User List) ===
+        self.user_list_widget = QListWidget()
+        self.user_list_widget.setMaximumWidth(200)
+        splitter.addWidget(self.user_list_widget)
+
+        # === Main Layout ===
+        layout = QVBoxLayout(central_widget)
+        layout.addWidget(splitter)
 
         self.status_bar = QStatusBar(self)
         self.setStatusBar(self.status_bar)
-        self.signals.status_updated.emit("Initializing...") # Initial status
+        self.signals.status_updated.emit("Initializing...")
 
         self.input_entry.setFocus()
-        # Disable input until connected state is confirmed
         self.input_entry.setEnabled(False)
         self.send_button.setEnabled(False)
-
-        self.auto_scroll_checkbox = QCheckBox("Auto-scroll", self)
-        self.auto_scroll_checkbox.setChecked(True)  # Default to enabled
-        main_layout.addWidget(self.auto_scroll_checkbox)
 
 
 
@@ -128,6 +147,10 @@ class ChatWindow(QMainWindow):
         self.signals.status_updated.connect(self.update_status_bar)
         self.signals.connection_state_changed.connect(self.handle_connection_state)
         self.signals.title_updated.connect(self.setWindowTitle)
+        self.user_list_widget.itemDoubleClicked.connect(self.on_user_double_clicked)
+        self.signals.user_list_updated.connect(self.update_user_list)
+
+
 
     # --- Slots for updating the GUI ---
 
@@ -152,6 +175,12 @@ class ChatWindow(QMainWindow):
     @pyqtSlot(str)
     def update_status_bar(self, status_text):
         self.status_bar.showMessage(status_text)
+
+    @pyqtSlot(list)
+    def update_user_list(self, users):
+        self.user_list_widget.clear()
+        self.user_list_widget.addItems(users)
+
 
     @pyqtSlot(str, dict)
     def handle_connection_state(self, state, data):
@@ -190,6 +219,12 @@ class ChatWindow(QMainWindow):
             self.send_command_func(message)
         elif not self.send_command_func:
              self.update_text_area("Error: Send function not ready.", "error")
+
+    @pyqtSlot('QListWidgetItem*')
+    def on_user_double_clicked(self, item):
+        username = item.text()
+        self.input_entry.setText(f"/dm {username} ")
+        self.input_entry.setFocus()
 
 
     def closeEvent(self, event):

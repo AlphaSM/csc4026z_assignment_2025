@@ -163,6 +163,7 @@ class ChatClientProtocol(asyncio.DatagramProtocol):
 
             elif response_type == USER_LIST_RESPONSE:
                 users = decoded_message.get('users', [])
+                self.signals.user_list_updated.emit(users)
                 next_page = decoded_message.get('next_page', False)
                 msg_text = "--- User List ---\n"
                 if users: msg_text += "\n".join([f"- {user}" for user in users])
