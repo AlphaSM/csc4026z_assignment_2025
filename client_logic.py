@@ -172,17 +172,25 @@ class ChatClientProtocol(asyncio.DatagramProtocol):
                 msg_tag = "info"
 
             elif response_type == CHANNEL_MESSAGE_RESPONSE:
-                msg_text = f"[{decoded_message.get('channel')}] <{decoded_message.get('username')}> {decoded_message.get('message')}"
-                msg_tag = "channel"
+                channel = decoded_message.get('channel')
+                sender = decoded_message.get('username')
+                if sender == self.username:
+                    msg_text = f"[You] /say {channel} {decoded_message.get('message')}"
+                    msg_tag = "own_message"
+                else:
+                    msg_text = f"[User] <{sender}> {decoded_message.get('message')}"
+                    msg_tag = "channel"
+
 
             elif response_type == USER_MESSAGE_RESPONSE:
-                 msg_text = f"<DM from {decoded_message.get('from_username')}> {decoded_message.get('message')}"
+                 sender = decoded_message.get('from_username')
+                 msg_text = f"[DM] <{sender}> {decoded_message.get('message')}"
                  msg_tag = "dm"
 
             elif response_type == SERVER_MESSAGE:
-                 # Let the GUI slot format the "*** SERVER..." prefix
-                 msg_text = f"{decoded_message.get('message')}"
-                 msg_tag = "server"
+                msg_text = f"[Server] {decoded_message.get('message')}"
+                msg_tag = "server"
+
 
             elif response_type == SERVER_SHUTDOWN:
                  # Emit specific state change signal
@@ -344,7 +352,8 @@ def parse_and_send_command(message: str, protocol: ChatClientProtocol):
 
     # Emit the user's own input back to the GUI for display
     # protocol.signals.message_received.emit(message, "own_message")
-    protocol.signals.message_received.emit(escape(message), "own_message")
+    protocol.signals.message_received.emit(f"[You] {escape(message)}", "own_message")
+
 
     request = None
     usage_error = None
@@ -385,10 +394,14 @@ def parse_and_send_command(message: str, protocol: ChatClientProtocol):
          if len(parts) == 2: request = {'request_type': CHANNEL_LEAVE, 'channel': parts[1]}
          else: usage_error = "Usage: /leave <channel_name>"
 
-    elif message.startswith("/say "):
+    elif message.startswith("/say"):
          parts = message.split(" ", 2)
-         if len(parts) == 3: request = {'request_type': CHANNEL_MESSAGE, 'channel': parts[1], 'message': parts[2]}
-         else: usage_error = "Usage: /say <channel_name> <message>"
+         if len(parts) == 3:
+            request = {'request_type': CHANNEL_MESSAGE, 'channel': parts[1], 'message': parts[2]}
+         elif len(parts) == 2:
+            usage_error = "Missing message. Usage: /say <channel_name> <message>"
+         else:
+            usage_error = "Usage: /say <channel_name> <message>"
 
     elif message.lower().startswith("/users"):
          parts = message.split()
@@ -415,6 +428,26 @@ def parse_and_send_command(message: str, protocol: ChatClientProtocol):
          parts = message.split(" ", 1)
          if len(parts) == 2: request = {'request_type': SET_USERNAME, 'username': parts[1]}
          else: usage_error = "Usage: /setuser <new_username>"
+    
+    elif message.lower() == "/help":
+        help_text = (
+            "--- Available Commands ---\n"
+            "/users                       List all users\n"
+            "/channels                    List available channels\n"
+            "/join <channel>             Join a channel\n"
+            "/say <channel> <message>    Send a message to a channel\n"
+            "/dm <user> <message>        Send a private message\n"
+            "/whoami                     Show your current username\n"
+            "/whois <username>           Get info about a user\n"
+            "/setuser <new_username>     Change your username\n"
+            "/quit                       Exit the chat\n"
+            "/help                       Show this help message\n"
+            "---------------------------"
+        )
+        help_html = help_text.replace("\n", "<br>")
+        protocol.signals.message_received.emit(help_html, "info_html")
+        return
+
 
     # --- Unknown Command or Default Behavior ---
     else:

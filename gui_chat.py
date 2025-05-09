@@ -2,6 +2,7 @@
 import asyncio
 import sys
 import msgpack # Need this for DISCONNECT cleanup
+import re
 from html import escape
 from PyQt5.QtWidgets import QCheckBox
 from datetime import datetime
@@ -81,6 +82,17 @@ class ChatWindow(QMainWindow):
         self.text_area.setReadOnly(True)
         # Use HTML for basic formatting
         self.text_area.setHtml("<p><i>Welcome! Please wait...</i></p>")
+
+        self.text_area.document().setDefaultStyleSheet("""
+            .error { color: red; font-weight: bold; }
+            .info { color: blue; }
+            .server { color: purple; font-weight: bold; }
+            .channel { color: darkgreen; }
+            .dm { color: #FF8C00; }
+            .own_message { color: gray; font-style: italic; }
+            .timestamp { color: #555; font-size: smaller; }
+        """)
+
         main_layout.addWidget(self.text_area)
 
         input_layout = QHBoxLayout()
@@ -121,35 +133,21 @@ class ChatWindow(QMainWindow):
 
     @pyqtSlot(str, str)
     def update_text_area(self, message, tag):
-        # Basic HTML formatting based on tag
-        # Escape message to prevent accidental HTML injection from server/users
-        # escaped_message = message.replace('&', '&').replace('<', '<').replace('>', '>')
-
-        escaped_message = escape(message)
-
-        formatted_message = escaped_message # Default
-        if tag == "error":
-            formatted_message = f'<font color="red"><b>ERROR:</b> {escaped_message}</font>'
-        elif tag == "info":
-            formatted_message = f'<font color="blue">{escaped_message}</font>'
-        elif tag == "server":
-            formatted_message = f'<font color="purple"><b>SERVER:</b> {escaped_message}</font>'
-        elif tag == "channel":
-            formatted_message = f'<font color="darkgreen">{escaped_message}</font>'
-        elif tag == "dm":
-            formatted_message = f'<font color="#FF8C00">{escaped_message}</font>' # DarkOrange
-        elif tag == "own_message":
-             # Display own message slightly differently
-             formatted_message = f'<font color="gray"><i>> {escaped_message}</i></font>'
+        if tag == "info_html":
+            # Message is already HTML-formatted, so skip escaping
+            formatted_message = f"<span class='info'>{message}</span>"
+        else:
+            escaped_message = escape(message)
+            escaped_message = re.sub(r'(https?://\S+)', r'<a href="\1">\1</a>', escaped_message)
+            formatted_message = f"<span class='{tag}'>{escaped_message}</span>"
 
         timestamp = datetime.now().strftime("%H:%M:%S")
-        formatted_message = f"[{timestamp}] {formatted_message}"
-        
-        self.text_area.append(formatted_message) # Handles newline and scrolling
+        formatted_message = f"<span class='timestamp'>[{timestamp}]</span> {formatted_message}"
+
+        self.text_area.append(formatted_message)
 
         if self.auto_scroll_checkbox.isChecked():
             self.text_area.verticalScrollBar().setValue(self.text_area.verticalScrollBar().maximum())
-
 
     @pyqtSlot(str)
     def update_status_bar(self, status_text):
