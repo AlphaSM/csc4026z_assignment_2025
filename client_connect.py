@@ -629,6 +629,124 @@ async def main():
         print("Client finished.")
 
 
+def parse_and_send_command(message: str, protocol: ChatClientProtocol):
+    """Parses a string command and sends the appropriate request."""
+    if not message or not protocol or not protocol.transport or protocol.transport.is_closing():
+        print("Cannot send: Not connected or invalid state.")
+        return
+
+    message = message.strip()
+    request = None
+
+    if message.lower() == "/quit":
+        print("Quit command received. Shutting down.")
+        protocol.shutdown_event.set()
+        return
+
+    elif message.lower().startswith("/channels"):
+        parts = message.split()
+        request = {'request_type': CHANNEL_LIST}
+        if len(parts) == 2:
+            try:
+                request['offset'] = int(parts[1])
+            except ValueError:
+                print("Usage: /channels [optional_offset_number]")
+                return
+
+    elif message.startswith("/create "):
+        parts = message.split(" ", 2)
+        if len(parts) >= 2:
+            request = {'request_type': CHANNEL_CREATE, 'channel': parts[1]}
+            if len(parts) == 3:
+                request['description'] = parts[2]
+        else:
+            print("Usage: /create <channel_name> [optional description]")
+            return
+
+    elif message.startswith("/info channel "):
+        parts = message.split(" ", 2)
+        if len(parts) == 3:
+            request = {'request_type': CHANNEL_INFO, 'channel': parts[2]}
+        else:
+            print("Usage: /info channel <channel_name>")
+            return
+
+    elif message.startswith("/join "):
+        parts = message.split(" ", 1)
+        if len(parts) == 2:
+            request = {'request_type': CHANNEL_JOIN, 'channel': parts[1]}
+        else:
+            print("Usage: /join <channel_name>")
+            return
+
+    elif message.startswith("/leave "):
+        parts = message.split(" ", 1)
+        if len(parts) == 2:
+            request = {'request_type': CHANNEL_LEAVE, 'channel': parts[1]}
+        else:
+            print("Usage: /leave <channel_name>")
+            return
+
+    elif message.startswith("/say "):
+        parts = message.split(" ", 2)
+        if len(parts) == 3:
+            request = {'request_type': CHANNEL_MESSAGE, 'channel': parts[1], 'message': parts[2]}
+        else:
+            print("Usage: /say <channel> <message>")
+            return
+
+    elif message.lower().startswith("/users"):
+        parts = message.split()
+        request = {'request_type': USER_LIST}
+        if len(parts) == 2:
+            try:
+                request['offset'] = int(parts[1])
+            except ValueError:
+                print("Usage: /users [optional_offset_number]")
+                return
+
+    elif message.startswith("/whois "):
+        parts = message.split(" ", 1)
+        if len(parts) == 2:
+            request = {'request_type': WHOIS, 'username': parts[1]}
+        else:
+            print("Usage: /whois <username>")
+            return
+
+    elif message == "/whoami":
+        request = {'request_type': WHOAMI}
+
+    elif message.startswith("/dm "):
+        parts = message.split(" ", 2)
+        if len(parts) == 3:
+            request = {'request_type': USER_MESSAGE, 'to_username': parts[1], 'message': parts[2]}
+        else:
+            print("Usage: /dm <username> <message>")
+            return
+
+    elif message.startswith("/setuser "):
+        parts = message.split(" ", 1)
+        if len(parts) == 2:
+            request = {'request_type': SET_USERNAME, 'username': parts[1]}
+        else:
+            print("Usage: /setuser <new_username>")
+            return
+
+    else:
+        if message.startswith("/"):
+            print(f"Unknown command: {message}")
+        else:
+            print("Cannot send message directly. Use /say <channel> <message> or a known command.")
+        return
+
+    # Final check before sending
+    if request:
+        protocol.send_message(request)
+
+
+        
+
+
 if __name__ == "__main__":
     try:
         # Run the main asynchronous function
